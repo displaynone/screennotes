@@ -11,9 +11,11 @@ struct View {
     canvas: gtk::DrawingArea,
     status: gtk::Label,
     controls: Controls,
+    toolbar: gtk::Box,
 }
 
 struct Controls {
+    move_bar: gtk::Button,
     width: gtk::SpinButton,
     size: gtk::SpinButton,
     fonts: gtk::DropDown,
@@ -294,7 +296,11 @@ impl Editor {
             };
             let ctrl = mods.contains(gdk::ModifierType::CONTROL_MASK);
             let shift = mods.contains(gdk::ModifierType::SHIFT_MASK);
-            if key == gdk::Key::Escape {
+            if key == gdk::Key::F6 {
+                if let Some(view) = e.views.borrow().iter().find(|v| v.window.is_active()) {
+                    toggle_toolbar(&view.toolbar, &view.controls.move_bar);
+                }
+            } else if key == gdk::Key::Escape {
                 e.close();
             } else if ctrl && (key == gdk::Key::s || key == gdk::Key::S) {
                 if shift {
@@ -334,6 +340,7 @@ impl Editor {
             canvas: canvas.clone(),
             status,
             controls,
+            toolbar,
         });
         window.fullscreen_on_monitor(monitor);
         window.present();
@@ -395,16 +402,13 @@ impl Editor {
             });
             row.append(&button);
         }
-        let move_bar = gtk::Button::with_label("↕");
-        move_bar.set_tooltip_text(Some("Move toolbar to top / bottom"));
+        let move_bar = gtk::Button::with_label("Move up");
+        move_bar.set_tooltip_text(Some("Move toolbar to top (F6)"));
+        move_bar.set_focus_on_click(false);
         let weak_panel = panel.downgrade();
-        move_bar.connect_clicked(move |_| {
-            if let Some(p) = weak_panel.upgrade() {
-                p.set_valign(if p.valign() == gtk::Align::End {
-                    gtk::Align::Start
-                } else {
-                    gtk::Align::End
-                });
+        move_bar.connect_clicked(move |button| {
+            if let Some(panel) = weak_panel.upgrade() {
+                toggle_toolbar(&panel, button);
             }
         });
         row.append(&move_bar);
@@ -542,6 +546,7 @@ impl Editor {
         (
             panel,
             Controls {
+                move_bar,
                 width,
                 size,
                 fonts,
@@ -858,6 +863,28 @@ impl Editor {
     }
 }
 
+fn toggle_toolbar(panel: &gtk::Box, button: &gtk::Button) {
+    let at_top = panel.valign() != gtk::Align::Start;
+    panel.set_valign(if at_top {
+        gtk::Align::Start
+    } else {
+        gtk::Align::End
+    });
+    button.set_label(if at_top { "Move down" } else { "Move up" });
+    button.set_tooltip_text(Some(if at_top {
+        "Move toolbar to bottom (F6)"
+    } else {
+        "Move toolbar to top (F6)"
+    }));
+    // Overlay owns the child's position. Invalidate its layout too so painting
+    // and pointer hit testing use the new position on the next frame.
+    panel.queue_resize();
+    if let Some(overlay) = panel.parent() {
+        overlay.queue_resize();
+        overlay.queue_allocate();
+    }
+}
+
 pub fn install_css() {
     let provider = gtk::CssProvider::new();
     provider.load_from_data(".toolbar { background: #20242e; color: #f4f6fa; padding: 12px; border: 1px solid #536078; border-radius: 14px; box-shadow: 0 6px 24px #0008; } .toolbar button { padding: 6px 9px; color: #f4f6fa; background: #343d4d; } .toolbar button:hover { background: #49566c; } .toolbar button.suggested-action { background: #236cb0; color: white; } .toolbar entry { color: #172030; background: #f7f9fc; } .toolbar spinbutton { color: #172030; background: #f7f9fc; } .status { background: #161a23; color: #e6f1ff; border-radius: 8px; padding: 8px 14px; } .error { outline: 2px solid #ff6666; }");
@@ -917,6 +944,36 @@ mod tests {
             assert!(view.window.is_fullscreen());
             assert_eq!(view.canvas.width(), monitor.width as i32);
             assert_eq!(view.canvas.height(), monitor.height as i32);
+        }
+        // Repeated moves must update both visible geometry and pointer targeting.
+        for _ in 0..3 {
+            for at_top in [true, false] {
+                for view in editor.views.borrow().iter() {
+                    view.controls.move_bar.emit_clicked();
+                }
+                let until = std::time::Instant::now() + std::time::Duration::from_millis(100);
+                while std::time::Instant::now() < until {
+                    while context.pending() {
+                        context.iteration(false);
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(2));
+                }
+                for view in editor.views.borrow().iter() {
+                    let bounds = view.toolbar.compute_bounds(&view.window).unwrap();
+                    assert_eq!(bounds.y() < view.window.height() as f32 / 2., at_top);
+                    let button = &view.controls.move_bar;
+                    let rect = button.compute_bounds(&view.window).unwrap();
+                    let picked = view
+                        .window
+                        .pick(
+                            f64::from(rect.x() + rect.width() / 2.),
+                            f64::from(rect.y() + rect.height() / 2.),
+                            gtk::PickFlags::DEFAULT,
+                        )
+                        .expect("Move button must remain clickable at its new position");
+                    assert!(picked == *button || picked.is_ancestor(button));
+                }
+            }
         }
         let m = editor.desktop.monitors[0];
         editor.begin(Point {

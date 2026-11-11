@@ -45,6 +45,8 @@ Outputs are written to `dist/`. See [Packaging](packaging/README.md) for depende
 
 All application-owned text is in English. System permission dialogs, native file chooser controls, and messages supplied by GTK or the desktop may follow the system language.
 
+Use **Move up / Move down** to reposition the toolbar, or press **F6** on the active monitor.
+
 ## Multiple monitors and Wayland
 
 The app enumerates all GDK monitors and requests a fullscreen surface on each one. Annotations use logical desktop coordinates, supporting negative origins, vertical arrangements, and gaps between screens. Export crops to the original image bounds and preserves its resolution. Gaps between monitors inside a selection retain the pixels provided by the compositor.
