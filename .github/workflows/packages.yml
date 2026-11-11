@@ -47,6 +47,8 @@ jobs:
       - name: Build both packages on the Ubuntu 24.04 baseline
         env:
           CONTAINER_ENGINE: docker
+          # Avoid the container bridge DNS path when resolving package mirrors.
+          CONTAINER_NETWORK: host
         run: bash scripts/package-container.sh all
 
       - name: Verify packages
