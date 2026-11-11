@@ -176,6 +176,7 @@ pub enum Tool {
     #[default]
     Select,
     Line,
+    Arrow,
     Rectangle,
     Text,
 }
@@ -200,6 +201,7 @@ impl Default for Style {
 #[derive(Clone, Debug)]
 pub enum Shape {
     Line(Point, Point),
+    Arrow(Point, Point),
     Rectangle(Rect),
     Text(Point, String),
 }

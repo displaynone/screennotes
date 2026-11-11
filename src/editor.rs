@@ -398,6 +398,7 @@ impl Editor {
         for (label, tool) in [
             ("↖ Region", Tool::Select),
             ("╱ Line", Tool::Line),
+            ("↗ Arrow", Tool::Arrow),
             ("□ Rectangle", Tool::Rectangle),
             ("T Text", Tool::Text),
         ] {
@@ -491,22 +492,22 @@ impl Editor {
             .width_chars(9)
             .max_width_chars(9)
             .build();
-        color.set_tooltip_text(Some("Custom color: enter #RRGGBB and press Enter"));
+        color.set_tooltip_text(Some(
+            "Custom color: #RRGGBB or rgb(255, 0, 0). Valid values apply immediately.",
+        ));
+        let weak = Rc::downgrade(self);
+        color.connect_changed(move |entry| {
+            if let Some(e) = weak.upgrade() {
+                if e.syncing.get() {
+                    return;
+                }
+                e.apply_custom_color(entry);
+            }
+        });
         let weak = Rc::downgrade(self);
         color.connect_activate(move |entry| {
             if let Some(e) = weak.upgrade() {
-                if let Ok(rgba) = gdk::RGBA::parse(entry.text()) {
-                    e.state.borrow_mut().style.color = (
-                        rgba.red() as f64,
-                        rgba.green() as f64,
-                        rgba.blue() as f64,
-                        rgba.alpha() as f64,
-                    );
-                    entry.remove_css_class("error");
-                    e.refresh();
-                } else {
-                    entry.add_css_class("error");
-                }
+                e.apply_custom_color(entry);
             }
         });
         style.append(&color);
@@ -612,6 +613,25 @@ impl Editor {
         )
     }
 
+    fn apply_custom_color(&self, entry: &gtk::Entry) {
+        match gdk::RGBA::parse(entry.text().trim()) {
+            Ok(rgba) => {
+                self.state.borrow_mut().style.color = (
+                    rgba.red() as f64,
+                    rgba.green() as f64,
+                    rgba.blue() as f64,
+                    rgba.alpha() as f64,
+                );
+                entry.remove_css_class("error");
+                self.refresh();
+            }
+            Err(_) => {
+                // Incomplete input must not replace the last valid drawing color.
+                entry.add_css_class("error");
+            }
+        }
+    }
+
     fn begin(&self, p: Point) {
         let mut s = self.state.borrow_mut();
         if s.anchor.is_none()
@@ -668,9 +688,13 @@ impl Editor {
         };
         match s.tool {
             Tool::Select => s.doc.selection = Rect::between(a, p).intersect(self.desktop.bounds),
-            Tool::Line => {
+            Tool::Line | Tool::Arrow => {
                 s.preview = Some(Annotation {
-                    shape: Shape::Line(a, p),
+                    shape: if s.tool == Tool::Arrow {
+                        Shape::Arrow(a, p)
+                    } else {
+                        Shape::Line(a, p)
+                    },
                     style: s.style.clone(),
                 })
             }
@@ -766,6 +790,7 @@ impl Editor {
         let tool = match s.tool {
             Tool::Select => "Region",
             Tool::Line => "Line",
+            Tool::Arrow => "Arrow",
             Tool::Rectangle => "Rectangle",
             Tool::Text => "Text",
         };
@@ -803,6 +828,7 @@ impl Editor {
                 .state_flags()
                 .contains(gtk::StateFlags::FOCUS_WITHIN)
             {
+                v.controls.color.remove_css_class("error");
                 v.controls.color.set_text(&format!(
                     "#{:02X}{:02X}{:02X}",
                     (r * 255.).round() as u8,
@@ -1060,14 +1086,80 @@ mod tests {
         }
         let color_entry = editor.views.borrow()[0].controls.color.clone();
         color_entry.set_text("#123456");
-        color_entry.emit_activate();
+        assert_eq!(
+            color_bytes(editor.state.borrow().style.color),
+            [0x12, 0x34, 0x56, 255]
+        );
         for view in editor.views.borrow().iter() {
             assert!(view.controls.colors.iter().all(|c| !c.button.is_active()));
             assert!(view.controls.color.has_css_class("custom-color-selected"));
         }
+        color_entry.set_text("#12");
+        assert!(color_entry.has_css_class("error"));
+        assert_eq!(
+            color_bytes(editor.state.borrow().style.color),
+            [0x12, 0x34, 0x56, 255]
+        );
+        color_entry.set_text("rgb(10, 20, 30)");
+        assert!(!color_entry.has_css_class("error"));
+        assert_eq!(
+            color_bytes(editor.state.borrow().style.color),
+            [10, 20, 30, 255]
+        );
+        // Draw immediately without pressing Enter and inspect the stored style.
+        {
+            let mut state = editor.state.borrow_mut();
+            state.doc.selection = Some(Rect {
+                x: 0.,
+                y: 0.,
+                width: 200.,
+                height: 200.,
+            });
+            state.tool = Tool::Line;
+        }
+        editor.begin(Point { x: 40., y: 40. });
+        editor.end(Point { x: 80., y: 80. }, true);
+        assert_eq!(
+            color_bytes(
+                editor
+                    .state
+                    .borrow()
+                    .doc
+                    .annotations
+                    .last()
+                    .unwrap()
+                    .style
+                    .color
+            ),
+            [10, 20, 30, 255]
+        );
+        {
+            let mut state = editor.state.borrow_mut();
+            state.tool = Tool::Arrow;
+        }
+        editor.begin(Point { x: 50., y: 100. });
+        editor.update(Point { x: 150., y: 100. });
+        assert!(matches!(
+            editor.state.borrow().preview.as_ref().unwrap().shape,
+            Shape::Arrow(..)
+        ));
+        editor.end(Point { x: 150., y: 100. }, true);
+        assert!(matches!(
+            editor.state.borrow().doc.annotations.last().unwrap().shape,
+            Shape::Arrow(..)
+        ));
+        editor.history(false);
+        assert_eq!(editor.state.borrow().doc.annotations.len(), 1);
+        editor.history(true);
+        assert_eq!(editor.state.borrow().doc.annotations.len(), 2);
+        {
+            let mut state = editor.state.borrow_mut();
+            state.doc = Document::default();
+            state.tool = Tool::Select;
+        }
         // Entering a preset's hexadecimal value selects that swatch too.
         color_entry.set_text("#FF4040");
-        color_entry.emit_activate();
+
         for view in editor.views.borrow().iter() {
             assert!(view.controls.colors[0].button.is_active());
             assert!(!view.controls.color.has_css_class("custom-color-selected"));

@@ -35,8 +35,8 @@ Outputs are written to `dist/`. See [Packaging](packaging/README.md) for depende
 ## Editing
 
 - Drag to select a region. To span several screens, you can also click the first corner and then the second corner on another monitor.
-- Choose **Line**, **Rectangle**, or **Text**. To add text, enter it in the toolbar field, then click inside the selection to place it.
-- Choose a color from the palette or enter a CSS color (`#RRGGBB`) and press Enter. Adjust line width, font family, and font size. Styles apply to subsequent annotations.
+- Choose **Line**, **Arrow**, **Rectangle**, or **Text**. Drag an arrow from its tail to its tip; it uses the selected color and line width. To add text, enter it in the toolbar field, then click inside the selection to place it.
+- Choose a color from the palette or enter a CSS color (`#RRGGBB` or `rgb(255, 0, 0)`). Valid values apply immediately; incomplete or invalid input keeps the last valid color. Adjust line width, font family, and font size. Styles apply to subsequent annotations.
 - A toolbar appears on each monitor. The status bar shows the shared active tool and style. **↕** moves the toolbar to the top or bottom to uncover obscured areas.
 - **Ctrl+S** or **Ctrl+C** copies the rendered image to the clipboard and closes the overlay. Ctrl+C keeps its usual behavior inside a text field.
 - **Ctrl+Shift+S** or **Save** opens the PNG file chooser.

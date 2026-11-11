@@ -14,6 +14,26 @@ pub fn annotation(cr: &cairo::Context, a: &Annotation) -> Result<(), cairo::Erro
             cr.line_to(b.x, b.y);
             cr.stroke()?;
         }
+        Shape::Arrow(start, tip) => {
+            let dx = tip.x - start.x;
+            let dy = tip.y - start.y;
+            let length = dx.hypot(dy);
+            if length > 0. {
+                let (ux, uy) = (dx / length, dy / length);
+                // Keep the head proportional to the stroke, but within short arrows.
+                let head = (a.style.width * 4.).max(12.).min(length * 0.6);
+                let half_width = head * 0.45;
+                let (bx, by) = (tip.x - ux * head, tip.y - uy * head);
+                cr.move_to(start.x, start.y);
+                cr.line_to(bx, by);
+                cr.stroke()?;
+                cr.move_to(tip.x, tip.y);
+                cr.line_to(bx - uy * half_width, by + ux * half_width);
+                cr.line_to(bx + uy * half_width, by - ux * half_width);
+                cr.close_path();
+                cr.fill()?;
+            }
+        }
         Shape::Rectangle(r) => {
             cr.rectangle(r.x, r.y, r.width, r.height);
             cr.stroke()?;
@@ -99,6 +119,47 @@ pub fn pixbuf(surface: &mut cairo::ImageSurface) -> Result<gtk::gdk_pixbuf::Pixb
 mod tests {
     use super::*;
     use crate::model::*;
+    #[test]
+    fn export_arrow_has_colored_shaft_and_head_in_both_directions() {
+        for reverse in [false, true] {
+            let bg = cairo::ImageSurface::create(cairo::Format::ARgb32, 100, 100).unwrap();
+            let desktop = Desktop::new(
+                vec![Rect {
+                    x: 0.,
+                    y: 0.,
+                    width: 100.,
+                    height: 100.,
+                }],
+                (100, 100),
+            )
+            .unwrap();
+            let mut doc = Document {
+                selection: Some(desktop.bounds),
+                ..Default::default()
+            };
+            let (start, tip) = if reverse { (80., 20.) } else { (20., 80.) };
+            doc.add(Annotation {
+                shape: Shape::Arrow(Point { x: start, y: 50. }, Point { x: tip, y: 50. }),
+                style: Style {
+                    color: (0., 1., 0., 1.),
+                    width: 4.,
+                    ..Default::default()
+                },
+            });
+            let mut out = export(&bg, &desktop, &doc).unwrap();
+            let stride = out.stride() as usize;
+            let pixels = out.data().unwrap();
+            let pixel = |x: usize, y: usize| {
+                let at = y * stride + x * 4;
+                u32::from_ne_bytes(pixels[at..at + 4].try_into().unwrap())
+            };
+            assert_eq!(pixel(40, 50), 0xff00ff00);
+            assert_eq!(pixel(if reverse { 33 } else { 66 }, 54), 0xff00ff00);
+            assert_eq!(pixel(40, 54), 0);
+            assert_eq!(pixel(if reverse { 16 } else { 84 }, 50), 0);
+        }
+    }
+
     #[test]
     fn export_crops_and_renders_in_desktop_coordinates() {
         let bg = cairo::ImageSurface::create(cairo::Format::ARgb32, 300, 100).unwrap();
