@@ -93,8 +93,10 @@ Tool references: [linuxdeploy](https://github.com/linuxdeploy/linuxdeploy), [GTK
 ## GitHub Actions
 
 The **Build packages** workflow (`.github/workflows/packages.yml`) builds the native
-x86_64 Debian package and AppImage using the same Ubuntu 24.04 container as local
-builds. It runs on pushes and pull requests to `main` or `master`, on `v*` tags,
+x86_64 Debian package and AppImage directly on a GitHub-hosted Ubuntu 24.04
+runner, using Rust 1.94.1 and `scripts/package.py all`. CI installs its dependencies
+on the runner and does not require Docker or BuildKit. The optional local container
+build uses the same Ubuntu baseline and Rust version. It runs on pushes and pull requests to `main` or `master`, on `v*` tags,
 and manually from **Actions → Build packages → Run workflow**. The workflow must
 be present on the default branch for the manual button to appear.
 
@@ -173,17 +175,17 @@ The script does not build packages, create commits/tags, or push to GitHub.
 
 If APT reports `Could not resolve archive.ubuntu.com` or
 `Could not resolve security.ubuntu.com`, the following missing-package errors are
-a consequence of the failed index download. GitHub Actions uses
-`CONTAINER_NETWORK=host` for both image construction and package generation to
-avoid the Docker bridge DNS path. Local builds keep the engine's default network;
-on Linux you can opt into the same configuration:
+a consequence of the failed index download. GitHub Actions now builds directly on
+the Ubuntu 24.04 runner, avoiding container DNS entirely. Local container builds
+keep the engine's default network; on Linux you can opt into host networking:
 
 ```bash
 CONTAINER_NETWORK=host bash scripts/package-container.sh all
 ```
 
 APT retries downloads three times and stops if any index remains unavailable.
-Host networking still requires working DNS and internet connectivity on the host.
+Host networking does not fix every container resolver issue. Both native CI builds
+and local container builds still require working DNS and internet on the host.
 After committing a workflow fix, start a new run on the updated commit; re-running
 an old run uses its original workflow and source. A release tag must also contain
 the fix, so use a new version/tag when publishing the corrected build.
