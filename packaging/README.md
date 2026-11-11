@@ -40,7 +40,7 @@ The package includes the binary, desktop launcher, color and symbolic icons, PNG
 Install the resulting package using APT so dependencies are resolved:
 
 ```bash
-sudo apt install ./dist/screennotes_0.4.0_amd64.deb
+sudo apt install ./dist/screennotes_0.5.0_amd64.deb
 ```
 
 Replace the version and architecture with your output filename. If you previously used the per-user installer, its `~/.local/bin/screennotes` and user launcher can take precedence over the system package. Quit the old instance and remove or rename that personal installation before switching to `/usr/bin/screennotes`.
@@ -64,10 +64,10 @@ The script downloads checksum-verified linuxdeploy and its GTK plugin into `targ
 The current plugin does not deploy the separate Glycin loaders used by GDK Pixbuf 2.44 and later. The script rejects that build environment instead of emitting an image that fails to load screenshots. Use the Ubuntu 24.04 container on newer hosts.
 
 ```bash
-chmod +x dist/ScreenNotes-0.4.0-x86_64.AppImage
-./dist/ScreenNotes-0.4.0-x86_64.AppImage --background
+chmod +x dist/ScreenNotes-0.5.0-x86_64.AppImage
+./dist/ScreenNotes-0.5.0-x86_64.AppImage --background
 # Without FUSE:
-./dist/ScreenNotes-0.4.0-x86_64.AppImage --appimage-extract-and-run --background
+./dist/ScreenNotes-0.5.0-x86_64.AppImage --appimage-extract-and-run --background
 ```
 
 The AppImage does not install a persistent launcher or enable login startup. It uses the host's portal and StatusNotifierItem support. Graphics drivers, fonts, and the desktop session remain host-provided. Before distributing, test the full capture → annotation → clipboard/save workflow on a clean target machine, not just `--help`.
@@ -128,13 +128,13 @@ Commit and push the workflow and source changes first. Update the version with `
 files, then push a matching tag:
 
 ```bash
-git tag v0.4.0
-git push origin v0.4.0
+git tag v0.5.0
+git push origin v0.5.0
 ```
 
 Use the current package version. A mismatch fails before compilation. After both
 packages pass verification, the release job creates **Releases → ScreenNotes
-v0.4.0** and attaches the installers directly under **Assets**. Tags containing a
+v0.5.0** and attaches the installers directly under **Assets**. Tags containing a
 hyphen are published as prereleases. Branch builds do not create releases. A manual
 workflow run against an existing matching tag can also publish a release, provided
 that tag contains this workflow. Existing published releases are not overwritten;

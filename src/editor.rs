@@ -22,6 +22,17 @@ struct Controls {
     text: gtk::Entry,
     color: gtk::Entry,
     tools: Vec<(Tool, gtk::Button)>,
+    colors: Vec<ColorControl>,
+}
+
+struct ColorControl {
+    rgba: (f64, f64, f64, f64),
+    label: &'static str,
+    button: gtk::ToggleButton,
+}
+
+fn color_bytes(color: (f64, f64, f64, f64)) -> [u8; 4] {
+    [color.0, color.1, color.2, color.3].map(|channel| (channel * 255.).round() as u8)
 }
 
 struct State {
@@ -442,23 +453,38 @@ impl Editor {
         panel.append(&row);
         let style = gtk::Box::new(gtk::Orientation::Horizontal, 6);
         style.append(&gtk::Label::new(Some("Color")));
-        for (label, color) in [
-            ("🔴", (1., 0.25, 0.25, 1.)),
-            ("🟡", (1., 0.8, 0.15, 1.)),
-            ("🟢", (0.2, 0.9, 0.5, 1.)),
-            ("🔵", (0.2, 0.55, 1., 1.)),
-            ("⚪", (1., 1., 1., 1.)),
-            ("⚫", (0., 0., 0., 1.)),
+        let mut colors = Vec::new();
+        for (label, name, color) in [
+            ("🔴", "Red", (1., 0.25, 0.25, 1.)),
+            ("🟡", "Yellow", (1., 0.8, 0.15, 1.)),
+            ("🟢", "Green", (0.2, 0.9, 0.5, 1.)),
+            ("🔵", "Blue", (0.2, 0.55, 1., 1.)),
+            ("⚪", "White", (1., 1., 1., 1.)),
+            ("⚫", "Black", (0., 0., 0., 1.)),
         ] {
-            let b = gtk::Button::with_label(label);
+            let b = gtk::ToggleButton::with_label(label);
+            b.set_tooltip_text(Some(name));
+            b.set_size_request(56, -1);
+            b.add_css_class("color-swatch");
             let weak = Rc::downgrade(self);
-            b.connect_clicked(move |_| {
+            b.connect_toggled(move |button| {
                 if let Some(e) = weak.upgrade() {
-                    e.state.borrow_mut().style.color = color;
+                    if e.syncing.get() {
+                        return;
+                    }
+                    if button.is_active() {
+                        e.state.borrow_mut().style.color = color;
+                    }
+                    // The current color stays selected if its button is clicked again.
                     e.refresh();
                 }
             });
             style.append(&b);
+            colors.push(ColorControl {
+                rgba: color,
+                label,
+                button: b,
+            });
         }
         let color = gtk::Entry::builder()
             .placeholder_text("#RRGGBB")
@@ -581,6 +607,7 @@ impl Editor {
                 text,
                 color,
                 tools,
+                colors,
             },
         )
     }
@@ -751,9 +778,9 @@ impl Editor {
             .unwrap_or_else(|| "Select a region".into());
         let status = format!(
             "{selection}  ·  {tool}  ·  #{:02X}{:02X}{:02X} · {} px · {}  ·  Ctrl+S copies · Esc cancels",
-            (r * 255.) as u8,
-            (g * 255.) as u8,
-            (b * 255.) as u8,
+            (r * 255.).round() as u8,
+            (g * 255.).round() as u8,
+            (b * 255.).round() as u8,
             s.style.width,
             s.style.font
         );
@@ -778,9 +805,9 @@ impl Editor {
             {
                 v.controls.color.set_text(&format!(
                     "#{:02X}{:02X}{:02X}",
-                    (r * 255.) as u8,
-                    (g * 255.) as u8,
-                    (b * 255.) as u8
+                    (r * 255.).round() as u8,
+                    (g * 255.).round() as u8,
+                    (b * 255.).round() as u8
                 ));
             }
             if let (Some(model), Some(family)) = (v.controls.fonts.model(), font.family()) {
@@ -796,6 +823,22 @@ impl Editor {
                         break;
                     }
                 }
+            }
+            let mut preset_selected = false;
+            for control in &v.controls.colors {
+                let selected = color_bytes(control.rgba) == color_bytes(s.style.color);
+                preset_selected |= selected;
+                control.button.set_active(selected);
+                control.button.set_label(&if selected {
+                    format!("{} ✓", control.label)
+                } else {
+                    control.label.to_string()
+                });
+            }
+            if preset_selected {
+                v.controls.color.remove_css_class("custom-color-selected");
+            } else {
+                v.controls.color.add_css_class("custom-color-selected");
             }
             for (tool, button) in &v.controls.tools {
                 if *tool == s.tool {
@@ -960,7 +1003,7 @@ fn toggle_toolbar(panel: &gtk::Box, button: &gtk::Button) {
 
 pub fn install_css() {
     let provider = gtk::CssProvider::new();
-    provider.load_from_data(".toolbar { background: #20242e; color: #f4f6fa; padding: 12px; border: 1px solid #536078; border-radius: 14px; box-shadow: 0 6px 24px #0008; } .toolbar button { padding: 6px 9px; color: #f4f6fa; background: #343d4d; } .toolbar button:hover { background: #49566c; } .toolbar button.suggested-action { background: #236cb0; color: white; } .toolbar entry { color: #172030; background: #f7f9fc; } .toolbar spinbutton { color: #172030; background: #f7f9fc; } .status { background: #161a23; color: #e6f1ff; border-radius: 8px; padding: 8px 14px; } .error { outline: 2px solid #ff6666; }");
+    provider.load_from_data(".toolbar { background: #20242e; color: #f4f6fa; padding: 12px; border: 1px solid #536078; border-radius: 14px; box-shadow: 0 6px 24px #0008; } .toolbar button { padding: 6px 9px; color: #f4f6fa; background: #343d4d; } .toolbar button:hover { background: #49566c; } .toolbar button.suggested-action { background: #236cb0; color: white; } .toolbar .color-swatch:checked { background: #236cb0; box-shadow: inset 0 0 0 2px #fff; } .toolbar .custom-color-selected { outline: 2px solid #68c6ff; outline-offset: 1px; } .toolbar entry { color: #172030; background: #f7f9fc; } .toolbar spinbutton { color: #172030; background: #f7f9fc; } .status { background: #161a23; color: #e6f1ff; border-radius: 8px; padding: 8px 14px; } .error { outline: 2px solid #ff6666; }");
     if let Some(d) = gdk::Display::default() {
         gtk::style_context_add_provider_for_display(
             &d,
@@ -998,6 +1041,38 @@ mod tests {
             std::thread::sleep(std::time::Duration::from_millis(10));
         }
         assert!(!editor.views.borrow().is_empty());
+        for selected in 0..6 {
+            let button = editor.views.borrow()[0].controls.colors[selected]
+                .button
+                .clone();
+            button.set_active(true);
+            // A second click must not leave the current color unmarked.
+            button.set_active(false);
+            for view in editor.views.borrow().iter() {
+                for (index, control) in view.controls.colors.iter().enumerate() {
+                    assert_eq!(control.button.is_active(), index == selected);
+                    assert_eq!(
+                        control.button.label().unwrap().contains('✓'),
+                        index == selected
+                    );
+                }
+            }
+        }
+        let color_entry = editor.views.borrow()[0].controls.color.clone();
+        color_entry.set_text("#123456");
+        color_entry.emit_activate();
+        for view in editor.views.borrow().iter() {
+            assert!(view.controls.colors.iter().all(|c| !c.button.is_active()));
+            assert!(view.controls.color.has_css_class("custom-color-selected"));
+        }
+        // Entering a preset's hexadecimal value selects that swatch too.
+        color_entry.set_text("#FF4040");
+        color_entry.emit_activate();
+        for view in editor.views.borrow().iter() {
+            assert!(view.controls.colors[0].button.is_active());
+            assert!(!view.controls.color.has_css_class("custom-color-selected"));
+        }
+
         if let Ok(expected) = std::env::var("SCREENNOTES_EXPECT_MONITORS") {
             assert_eq!(
                 editor.views.borrow().len(),
