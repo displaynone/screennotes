@@ -183,9 +183,27 @@ keep the engine's default network; on Linux you can opt into host networking:
 CONTAINER_NETWORK=host bash scripts/package-container.sh all
 ```
 
-APT retries downloads three times and stops if any index remains unavailable.
+Local container builds retry APT downloads three times and stop if any index
+remains unavailable. Native CI uses the bounded mirror fallback described below.
 Host networking does not fix every container resolver issue. Both native CI builds
 and local container builds still require working DNS and internet on the host.
 After committing a workflow fix, start a new run on the updated commit; re-running
 an old run uses its original workflow and source. A release tag must also contain
 the fix, so use a new version/tag when publishing the corrected build.
+
+### Runner mirror failures
+
+CI installs dependencies through `scripts/install-ci-dependencies.sh`. It probes
+Kernel.org, Princeton and the Ubuntu archive over HTTPS, then uses a temporary
+APT source list for the selected mirror. This avoids the runner's
+`mirror+file:/etc/apt/apt-mirrors.txt` configuration, which may keep trying an
+unresolvable Azure mirror. All four Noble suites must pass Ubuntu archive-keyring
+signature verification before installation. Failed attempts use separate index
+directories; system repository configuration is not changed.
+
+Connection probes are limited to 15 seconds, index updates to 180 seconds per
+mirror, and installation to 600 seconds per mirror. If every mirror fails, the
+job stops with a network diagnostic. This still requires the runner to reach at
+least one mirror. On an Ubuntu 24.04 x86_64 test system,
+`sudo bash scripts/install-ci-dependencies.sh --check-only` checks signed indices
+without installing packages.
