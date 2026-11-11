@@ -102,7 +102,7 @@ Immediately after reproducing the error, run:
 ```bash
 screennotes --diagnose
 # Or use the AppImage you launched:
-./ScreenNotes-0.9.0-x86_64.AppImage --diagnose
+./ScreenNotes-0.10.0-x86_64.AppImage --diagnose
 ```
 
 This prints desktop information, portal versions, saved screenshot permissions, and recent portal logs. It does not change permissions or restart services. Review the output before sharing it. Missing optional backends and an absent permission entry are not necessarily errors. Avoid resetting the entire permission store: unidentified host applications may share an entry.
