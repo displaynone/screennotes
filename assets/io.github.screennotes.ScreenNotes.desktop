@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Application
+Name=ScreenNotes
+Comment=Capture and annotate a region of your screens
+Exec=screennotes --capture
+Icon=screennotes
+Terminal=false
+Categories=Graphics;
+StartupNotify=true
+Actions=Background;
+
+[Desktop Action Background]
+Name=Show indicator
+Exec=screennotes --background

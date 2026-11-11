@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
+  <title>ScreenNotes</title>
+  <g fill="none" stroke="#deddda" stroke-width="2" stroke-linecap="square" stroke-linejoin="miter">
+    <path d="M5 2H2v3 M11 2h3v3 M14 11v3h-3 M5 14H2v-3"/>
+    <path d="m6.5 9.5 3-3"/>
+  </g>
+</svg>

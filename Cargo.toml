@@ -1,0 +1,30 @@
+[package]
+name = "screennotes"
+version = "0.1.3"
+edition = "2024"
+description = "Screenshots and annotations for Ubuntu Wayland"
+license = "MIT"
+
+[features]
+default = ["desktop"]
+desktop = ["dep:gtk", "dep:pangocairo", "dep:ashpd", "dep:tokio", "dep:ksni", "dep:async-channel"]
+
+[dependencies]
+gtk = { package = "gtk4", version = "0.10", features = ["v4_10"], optional = true }
+pangocairo = { version = "0.21", optional = true }
+ashpd = { version = "0.12", default-features = false, features = ["tokio"], optional = true }
+tokio = { version = "1", features = ["rt-multi-thread", "net", "time"], optional = true }
+ksni = { version = "0.3", features = ["blocking"], optional = true }
+async-channel = { version = "2", optional = true }
+
+[[bin]]
+name = "screennotes"
+path = "src/main.rs"
+required-features = ["desktop"]
+
+[profile.dev]
+debug = 0
+
+[profile.release]
+strip = true
+lto = "thin"

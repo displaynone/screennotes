@@ -1,0 +1,71 @@
+name: Build packages
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, master]
+    tags: ['v*']
+  pull_request:
+    branches: [main, master]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: packages-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  packages:
+    name: DEB and AppImage (x86_64)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Build both packages on the Ubuntu 24.04 baseline
+        env:
+          CONTAINER_ENGINE: docker
+        run: bash scripts/package-container.sh all
+
+      - name: Verify packages
+        run: |
+          docker run --rm --user "$(id -u):$(id -g)" \
+            --volume "$PWD/dist:/packages:ro" --workdir /packages \
+            --entrypoint /bin/bash screennotes-builder:24.04 -e -o pipefail -c '
+              sha256sum --check -- *.sha256
+              dpkg-deb --info ./*.deb
+              dpkg-deb --extract ./*.deb /tmp/screennotes-deb
+              /tmp/screennotes-deb/usr/bin/screennotes --help
+              ./*.AppImage --appimage-extract-and-run --help
+            '
+
+      - name: Upload Debian package
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: screennotes-deb-amd64
+          path: |
+            dist/*.deb
+            dist/*.deb.sha256
+            dist/*.deb.build.json
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+
+      - name: Upload AppImage
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: screennotes-appimage-x86_64
+          path: |
+            dist/*.AppImage
+            dist/*.AppImage.sha256
+            dist/*.AppImage.build.json
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0

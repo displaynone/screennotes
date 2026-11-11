@@ -1,0 +1,36 @@
+# Rust builds and distributable packages
+/target/
+/dist/
+*.deb
+*.AppImage
+*.AppImage.zsync
+*.deb.sha256
+*.AppImage.sha256
+*.deb.build.json
+*.AppImage.build.json
+/squashfs-root/
+/*.AppDir/
+
+# Local tooling, credentials and environment overrides
+/.codex/
+/.agents/
+/.aws/
+/.idea/
+/.vscode/
+.env
+.env.*
+!.env.example
+
+# Python caches, temporary files and desktop metadata
+__pycache__/
+*.py[cod]
+/.venv/
+*.log
+*.tmp
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Keep Cargo.lock and assets (including PNG icons) in version control.
