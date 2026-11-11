@@ -53,7 +53,10 @@ The portal must return an image of the **entire desktop** at a uniform scale. GN
 
 Connecting or disconnecting a monitor during editing cancels the session. The session is also canceled if GNOME rejects a fullscreen surface. The indicator requires the **Ubuntu AppIndicators** extension, included with Ubuntu; plain GNOME needs a StatusNotifierItem provider.
 
-GitHub Actions also builds both packages automatically. Download them from **Actions → Build packages → Artifacts**, or trigger a manual run. See [packaging instructions](packaging/README.md#github-actions) for triggers and details.
+GitHub Actions also builds both packages automatically. Matching version tags publish the installers under **Releases**. Download them from **Actions → Build packages → Artifacts**, or trigger a manual run. See [packaging instructions](packaging/README.md#github-actions) for triggers and details.
+
+To bump the package version, run `python3 scripts/version.py patch` (or `minor`,
+`major`, or an explicit version). Add `--dry-run` to preview the changes.
 
 ## Verification
 

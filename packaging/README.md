@@ -110,8 +110,9 @@ checksums, Debian metadata and both command-line entry points. Desktop capture,
 permissions and monitor layout still require testing in a graphical session.
 
 Package versions come from `Cargo.toml`; pushing a tag does not change the version.
-The workflow uploads build artifacts, not GitHub Releases. It needs no custom
-secrets and only read access to repository contents. Third-party action versions
+Branch and pull-request runs upload build artifacts. Tag runs also publish a GitHub
+Release with both installers, checksums and build metadata. No custom secrets are
+needed: only the release job receives repository contents write permission. Third-party action versions
 are pinned to commits from the official [checkout](https://github.com/actions/checkout)
 and [upload-artifact](https://github.com/actions/upload-artifact) repositories.
 
@@ -120,3 +121,50 @@ and PNG icons must remain committed: clean CI builds need them. If generated fil
 were committed before the ignore rules were added, remove those specific paths
 from Git's index (for example, `git rm -r --cached dist target`) and commit the
 removal; the command preserves the local files. Only name paths actually tracked.
+
+### Publishing a release
+
+Commit and push the workflow and source changes first. Update the version with `python3 scripts/version.py VERSION`, commit the changed
+files, then push a matching tag:
+
+```bash
+git tag v0.1.3
+git push origin v0.1.3
+```
+
+Use the current package version. A mismatch fails before compilation. After both
+packages pass verification, the release job creates **Releases → ScreenNotes
+v0.1.3** and attaches the installers directly under **Assets**. Tags containing a
+hyphen are published as prereleases. Branch builds do not create releases. A manual
+workflow run against an existing matching tag can also publish a release, provided
+that tag contains this workflow. Existing published releases are not overwritten;
+use a new version and tag for subsequent releases. Previously completed Actions
+runs will not retroactively publish a release.
+
+GitHub **Packages** is separate from Releases and does not provide a Debian/APT or
+AppImage registry. These downloads belong in Releases; no Packages entry is created.
+
+## Updating the version
+
+Use Python 3.11 or newer; no Cargo build or network connection is needed:
+
+```bash
+python3 scripts/version.py patch --dry-run
+python3 scripts/version.py patch
+# Alternatively, increment minor/major or choose an explicit version:
+python3 scripts/version.py minor
+python3 scripts/version.py major
+python3 scripts/version.py 0.2.0
+python3 scripts/version.py v0.2.0-beta.1
+```
+
+These are alternative commands, not a sequence to run together. The script updates
+the local package in `Cargo.toml` and `Cargo.lock`, plus download and release-tag
+examples in both READMEs. Dependency versions and historical notes are preserved.
+It validates semantic versions and checks that the manifest and lockfile agree
+before writing. Increment commands produce the next stable version (for example,
+`patch` on `0.2.0-beta.1` becomes `0.2.1`); use an explicit version to graduate a
+prerelease to `0.2.0`.
+
+Review and commit the changed files before creating the printed release tag.
+The script does not build packages, create commits/tags, or push to GitHub.
