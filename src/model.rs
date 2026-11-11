@@ -51,6 +51,86 @@ impl Rect {
     }
 }
 
+/// Crop corners use logical desktop coordinates, so hit areas stay consistent on HiDPI.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CropHandle {
+    TopLeft,
+    TopRight,
+    BottomLeft,
+    BottomRight,
+}
+
+impl CropHandle {
+    pub const ALL: [Self; 4] = [
+        Self::TopLeft,
+        Self::TopRight,
+        Self::BottomLeft,
+        Self::BottomRight,
+    ];
+
+    pub fn position(self, r: Rect) -> Point {
+        Point {
+            x: r.x
+                + if matches!(self, Self::TopRight | Self::BottomRight) {
+                    r.width
+                } else {
+                    0.
+                },
+            y: r.y
+                + if matches!(self, Self::BottomLeft | Self::BottomRight) {
+                    r.height
+                } else {
+                    0.
+                },
+        }
+    }
+
+    pub fn hit(r: Rect, p: Point) -> Option<Self> {
+        Self::ALL
+            .into_iter()
+            .filter_map(|handle| {
+                let c = handle.position(r);
+                let dx = (p.x - c.x).abs();
+                let dy = (p.y - c.y).abs();
+                (dx <= 10. && dy <= 10.).then_some((handle, dx * dx + dy * dy))
+            })
+            .min_by(|a, b| a.1.total_cmp(&b.1))
+            .map(|(handle, _)| handle)
+    }
+
+    pub fn cursor(self) -> &'static str {
+        match self {
+            Self::TopLeft | Self::BottomRight => "nwse-resize",
+            Self::TopRight | Self::BottomLeft => "nesw-resize",
+        }
+    }
+
+    pub fn resize(self, r: Rect, p: Point, bounds: Rect) -> Rect {
+        let left = matches!(self, Self::TopLeft | Self::BottomLeft);
+        let top = matches!(self, Self::TopLeft | Self::TopRight);
+        let fixed = Point {
+            x: if left { r.x + r.width } else { r.x },
+            y: if top { r.y + r.height } else { r.y },
+        };
+        // Keep the opposite corner fixed and prevent collapsing or flipping the crop.
+        let w = r.width.min(1.);
+        let h = r.height.min(1.);
+        let moving = Point {
+            x: if left {
+                p.x.clamp(bounds.x, fixed.x - w)
+            } else {
+                p.x.clamp(fixed.x + w, bounds.x + bounds.width)
+            },
+            y: if top {
+                p.y.clamp(bounds.y, fixed.y - h)
+            } else {
+                p.y.clamp(fixed.y + h, bounds.y + bounds.height)
+            },
+        };
+        Rect::between(fixed, moving)
+    }
+}
+
 /// All editing coordinates are desktop logical coordinates, including negative origins.
 #[derive(Clone, Debug)]
 pub struct Desktop {
@@ -165,6 +245,60 @@ mod tests {
             height: h,
         }
     }
+    #[test]
+    fn crop_handles_resize_each_corner_with_negative_coordinates() {
+        let r = rect(-100., -50., 200., 100.);
+        let bounds = rect(-1920., -1080., 5760., 2160.);
+        for (handle, expected) in [
+            (CropHandle::TopLeft, rect(-80., -30., 180., 80.)),
+            (CropHandle::TopRight, rect(-100., -30., 220., 80.)),
+            (CropHandle::BottomLeft, rect(-80., -50., 180., 120.)),
+            (CropHandle::BottomRight, rect(-100., -50., 220., 120.)),
+        ] {
+            let p = handle.position(r);
+            assert_eq!(CropHandle::hit(r, p), Some(handle));
+            assert_eq!(
+                handle.resize(
+                    r,
+                    Point {
+                        x: p.x + 20.,
+                        y: p.y + 20.
+                    },
+                    bounds
+                ),
+                expected
+            );
+        }
+        assert_eq!(CropHandle::hit(r, Point::default()), None);
+        let tiny = rect(0., 0., 3., 3.);
+        assert_eq!(
+            CropHandle::hit(tiny, Point { x: 3., y: 3. }),
+            Some(CropHandle::BottomRight)
+        );
+    }
+
+    #[test]
+    fn crop_handles_clamp_and_do_not_collapse() {
+        let bounds = rect(-100., -100., 300., 300.);
+        let r = rect(0., 0., 100., 100.);
+        assert_eq!(
+            CropHandle::TopLeft.resize(r, Point { x: -999., y: -999. }, bounds),
+            rect(-100., -100., 200., 200.)
+        );
+        assert_eq!(
+            CropHandle::BottomRight.resize(r, Point { x: 999., y: 999. }, bounds),
+            rect(0., 0., 200., 200.)
+        );
+        assert_eq!(
+            CropHandle::TopLeft.resize(r, Point { x: 999., y: 999. }, bounds),
+            rect(99., 99., 1., 1.)
+        );
+        assert_eq!(
+            CropHandle::BottomRight.resize(r, Point { x: -999., y: -999. }, bounds),
+            rect(0., 0., 1., 1.)
+        );
+    }
+
     #[test]
     fn three_monitors_negative_and_stacked() {
         let d = Desktop::new(

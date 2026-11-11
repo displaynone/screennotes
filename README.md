@@ -45,6 +45,10 @@ Outputs are written to `dist/`. See [Packaging](packaging/README.md) for depende
 
 All application-owned text is in English. System permission dialogs, native file chooser controls, and messages supplied by GTK or the desktop may follow the system language.
 
+After selecting a region, drag any of its four square corner handles to resize the crop.
+The opposite corner stays fixed, annotations stay in place, and the handles are not
+included in the copied or saved image. Handles work with any annotation tool selected.
+
 Use **Move up / Move down** to reposition the toolbar, or press **F6** on the active monitor.
 
 ## Multiple monitors and Wayland
@@ -95,7 +99,7 @@ Immediately after reproducing the error, run:
 ```bash
 screennotes --diagnose
 # Or use the AppImage you launched:
-./ScreenNotes-0.3.0-x86_64.AppImage --diagnose
+./ScreenNotes-0.4.0-x86_64.AppImage --diagnose
 ```
 
 This prints desktop information, portal versions, saved screenshot permissions, and recent portal logs. It does not change permissions or restart services. Review the output before sharing it. Missing optional backends and an absent permission entry are not necessarily errors. Avoid resetting the entire permission store: unidentified host applications may share an entry.

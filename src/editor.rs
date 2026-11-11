@@ -30,6 +30,7 @@ struct State {
     style: Style,
     text: String,
     anchor: Option<Point>,
+    resize: Option<(Rect, CropHandle, Point)>,
     preview: Option<Annotation>,
 }
 
@@ -143,6 +144,7 @@ impl Editor {
                 style: Style::default(),
                 text: String::new(),
                 anchor: None,
+                resize: None,
                 preview: None,
             }),
             views: RefCell::new(vec![]),
@@ -273,17 +275,41 @@ impl Editor {
                 );
             }
         });
+        let weak = Rc::downgrade(self);
+        drag.connect_cancel(move |_, _| {
+            if let Some(e) = weak.upgrade() {
+                let original = e.state.borrow_mut().resize.take();
+                if let Some((original, _, _)) = original {
+                    e.state.borrow_mut().doc.selection = Some(original);
+                    e.refresh();
+                }
+            }
+        });
         canvas.add_controller(drag);
         let motion = gtk::EventControllerMotion::new();
         let weak = Rc::downgrade(self);
-        motion.connect_motion(move |_, x, y| {
-            if let Some(e) = weak.upgrade()
-                && e.state.borrow().anchor.is_some()
-            {
-                e.update(Point {
+        motion.connect_motion(move |controller, x, y| {
+            if let Some(e) = weak.upgrade() {
+                let p = Point {
                     x: x + bounds.x,
                     y: y + bounds.y,
-                });
+                };
+                let moving = {
+                    let s = e.state.borrow();
+                    s.anchor.is_some() || s.resize.is_some()
+                };
+                if moving {
+                    e.update(p);
+                }
+                let s = e.state.borrow();
+                let handle = s
+                    .resize
+                    .map(|(_, handle, _)| handle)
+                    .or_else(|| s.doc.selection.and_then(|r| CropHandle::hit(r, p)));
+                if let Some(widget) = controller.widget() {
+                    widget
+                        .set_cursor_from_name(Some(handle.map_or("crosshair", CropHandle::cursor)));
+                }
             }
         });
         canvas.add_controller(motion);
@@ -371,6 +397,7 @@ impl Editor {
                     let mut s = e.state.borrow_mut();
                     s.tool = tool;
                     s.anchor = None;
+                    s.resize = None;
                     s.preview = None;
                     drop(s);
                     e.refresh();
@@ -487,6 +514,7 @@ impl Editor {
                 s.text = entry.text().to_string();
                 s.tool = Tool::Text;
                 s.anchor = None;
+                s.resize = None;
                 drop(s);
                 e.refresh();
             }
@@ -559,6 +587,22 @@ impl Editor {
 
     fn begin(&self, p: Point) {
         let mut s = self.state.borrow_mut();
+        if s.anchor.is_none()
+            && let Some(r) = s.doc.selection
+            && let Some(handle) = CropHandle::hit(r, p)
+        {
+            let corner = handle.position(r);
+            s.resize = Some((
+                r,
+                handle,
+                Point {
+                    x: corner.x - p.x,
+                    y: corner.y - p.y,
+                },
+            ));
+            s.preview = None;
+            return;
+        }
         if s.tool == Tool::Text {
             if s.doc.selection.is_some_and(|r| r.contains(p)) && !s.text.trim().is_empty() {
                 let a = Annotation {
@@ -579,6 +623,19 @@ impl Editor {
 
     fn update(&self, p: Point) {
         let mut s = self.state.borrow_mut();
+        if let Some((original, handle, offset)) = s.resize {
+            s.doc.selection = Some(handle.resize(
+                original,
+                Point {
+                    x: p.x + offset.x,
+                    y: p.y + offset.y,
+                },
+                self.desktop.bounds,
+            ));
+            drop(s);
+            self.refresh();
+            return;
+        }
         let Some(a) = s.anchor else {
             return;
         };
@@ -603,6 +660,12 @@ impl Editor {
     }
 
     fn end(&self, p: Point, dragged: bool) {
+        if self.state.borrow().resize.is_some() {
+            self.update(p);
+            self.state.borrow_mut().resize = None;
+            self.refresh();
+            return;
+        }
         let anchor = self.state.borrow().anchor;
         let Some(a) = anchor else {
             return;
@@ -658,6 +721,15 @@ impl Editor {
             cr.set_line_width(1.);
             cr.rectangle(r.x, r.y, r.width, r.height);
             let _ = cr.stroke();
+            for handle in CropHandle::ALL {
+                let point = handle.position(r);
+                cr.rectangle(point.x - 4., point.y - 4., 8., 8.);
+                cr.set_source_rgb(1., 1., 1.);
+                let _ = cr.fill_preserve();
+                cr.set_source_rgb(0.1, 0.35, 0.55);
+                cr.set_line_width(2.);
+                let _ = cr.stroke();
+            }
         }
         let _ = cr.restore();
     }
@@ -739,6 +811,7 @@ impl Editor {
     fn history(&self, redo: bool) {
         let mut s = self.state.borrow_mut();
         s.anchor = None;
+        s.resize = None;
         s.preview = None;
         if redo {
             s.doc.redo();
@@ -1038,6 +1111,43 @@ mod tests {
                     .unwrap();
                 renderer.unrealize();
             }
+        }
+        let original = editor.state.borrow().doc.selection.unwrap();
+        // Handles work even with an annotation tool selected; a click alone must
+        // not leave a resize active, and resizing must not alter annotations.
+        let corner = CropHandle::BottomRight.position(original);
+        editor.begin(corner);
+        editor.end(corner, false);
+        assert!(editor.state.borrow().resize.is_none());
+        assert_eq!(editor.state.borrow().doc.selection, Some(original));
+        for handle in CropHandle::ALL {
+            editor.state.borrow_mut().doc.selection = Some(original);
+            let start = handle.position(original);
+            let press = Point {
+                x: start.x + 2.,
+                y: start.y + 2.,
+            };
+            editor.begin(press);
+            editor.update(press);
+            assert_eq!(editor.state.borrow().doc.selection, Some(original));
+            let end = Point {
+                x: press.x + 20.,
+                y: press.y + 20.,
+            };
+            editor.end(end, true);
+            assert!(editor.state.borrow().resize.is_none());
+            assert_eq!(
+                editor.state.borrow().doc.selection,
+                Some(handle.resize(
+                    original,
+                    Point {
+                        x: start.x + 20.,
+                        y: start.y + 20.
+                    },
+                    editor.desktop.bounds
+                ))
+            );
+            assert_eq!(editor.state.borrow().doc.annotations.len(), 2);
         }
         editor.close();
         while context.pending() {

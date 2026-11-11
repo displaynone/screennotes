@@ -121,7 +121,7 @@ fn main() -> glib::ExitCode {
                             Ok(editor)=>*active.borrow_mut()=Some(editor),Err(e)=>{busy.set(false);message(&app,"Could not open the editor",&e);}
                         }
                     }
-                    Event::Help=>message(&app,"ScreenNotes", "Drag to select. To select across monitors, click each corner separately. Use the floating toolbar to annotate.\n\nCtrl+S / Ctrl+C: copy\nCtrl+Shift+S: save PNG\nCtrl+Z / Ctrl+Shift+Z: undo / redo\nF6: move toolbar to top / bottom\nEsc: cancel\n\nThe app stays running to preserve the clipboard. Set up an Ubuntu keyboard shortcut for: screennotes --capture"),
+                    Event::Help=>message(&app,"ScreenNotes", "Drag to select. Drag the square corner handles to resize the crop. To select across monitors, click each corner separately. Use the floating toolbar to annotate.\n\nCtrl+S / Ctrl+C: copy\nCtrl+Shift+S: save PNG\nCtrl+Z / Ctrl+Shift+Z: undo / redo\nF6: move toolbar to top / bottom\nEsc: cancel\n\nThe app stays running to preserve the clipboard. Set up an Ubuntu keyboard shortcut for: screennotes --capture"),
                     Event::Error(e)=>message(&app,"ScreenNotes",&e),
                     Event::Quit=> {if let Some(editor)=active.borrow_mut().take(){editor.close();} app.quit();break;}
                 }
